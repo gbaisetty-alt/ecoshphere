@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillSwap — Peer Skill Exchange</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #09090b; }
+    canvas#bg-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; pointer-events: none; }
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="text-zinc-100 antialiased selection:bg-zinc-100 selection:text-zinc-950"
+      x-data="skillSwapApp()" x-init="init()"
+
+  <!-- Dynamic WebGL 3D Animation Layer -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- Application Container -->
+  <div class="relative z-10 min-h-screen flex flex-col">
+    
+    <!-- Top Navigation Bar -->
+    <header class="sticky top-0 z-40 bg-zinc-950/70 backdrop-blur-xl border-b border-zinc-800/80">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <div class="flex items-center gap-2.5">
+            <div class="h-8 w-8 bg-zinc-100 rounded-lg flex items-center justify-center font-bold text-zinc-950 text-sm tracking-tight shadow-sm">S</div>
+            <span class="font-semibold text-zinc-100 tracking-tight text-base">SkillSwap</span>
+            <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-full font-semibold">KLH Campus</span>
+          </div>
+          
+          <nav class="hidden md:flex items-center gap-1">
+            <button @click="activeTab = 'explore'" 
+                    :class="activeTab === 'explore' ? 'bg-zinc-800/80 text-zinc-100 border border-zinc-700/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all">
+              Explore Skills
+            </button>
+            <button @click="activeTab = 'requests'; loadRequests()" 
+                    :class="activeTab === 'requests' ? 'bg-zinc-800/80 text-zinc-100 border border-zinc-700/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2">
+              Requests
+              <span class="h-4 w-4 bg-zinc-100 text-zinc-950 rounded-full text-[10px] flex items-center justify-center font-bold" x-text="requests.length"></span>
+            </button>
+            <button @click="activeTab = 'matches'; loadMatches()" 
+                    :class="activeTab === 'matches' ? 'bg-zinc-800/80 text-zinc-100 border border-zinc-700/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all">
+              Smart Matches
+            </button>
+            <button @click="activeTab = 'messages'; loadConversations()" 
+                    :class="activeTab === 'messages' ? 'bg-zinc-800/80 text-zinc-100 border border-zinc-700/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all">
+              Messages
+            </button>
+            <button @click="activeTab = 'dashboard'; loadDashboard(); loadAnalytics()" 
+                    :class="activeTab === 'dashboard' ? 'bg-zinc-800/80 text-zinc-100 border border-zinc-700/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'"
+                    class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all">
+              Dashboard
+            </button>
+            <button @click="profileModal = true; loadProfile()" 
+                    class="text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all">
+              My Profile
+            </button>
+          </nav>
+        </div>
+
+        <div class="flex items-center gap-3 relative">
+          <button x-show="token" @click="notificationOpen = !notificationOpen; if(notificationOpen) loadNotifications()"
+                  class="relative h-8 px-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:border-zinc-600 transition-all">
+            Notifications
+            <span x-show="unreadNotifications > 0"
+                  class="ml-1 inline-flex min-w-4 h-4 px-1 items-center justify-center rounded-full bg-zinc-100 text-zinc-950 text-[9px] font-bold"
+                  x-text="unreadNotifications"></span>
+          </button>
+
+          <div x-show="notificationOpen" x-cloak @click.away="notificationOpen=false"
+               class="absolute right-0 top-11 w-80 max-h-96 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-3 z-50">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-zinc-100">Notifications</span>
+              <button @click="markAllNotificationsRead()" class="text-[10px] text-zinc-500 hover:text-zinc-200">Mark all read</button>
+            </div>
+            <template x-if="notifications.length === 0">
+              <p class="text-xs text-zinc-500 p-3">No notifications yet.</p>
+            </template>
+            <template x-for="n in notifications" :key="n.id">
+              <button @click="markNotificationRead(n)"
+                      class="w-full text-left p-3 rounded-lg mb-1 border transition-all"
+                      :class="n.is_read ? 'border-transparent bg-zinc-950/30' : 'border-zinc-700 bg-zinc-800/60'">
+                <div class="text-xs font-semibold text-zinc-200" x-text="n.title"></div>
+                <div class="text-[11px] text-zinc-500 mt-1" x-text="n.message"></div>
+              </button>
+            </template>
+          </div>
+
+          <button @click="if(requireLogin()) newSkillModal = true" class="bg-zinc-100 hover:bg-white text-zinc-950 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm">
+            + Post Skill
+          </button>
+          <button @click="if(requireLogin()) { profileModal = true; loadProfile(); }" class="h-8 w-8 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center text-xs font-semibold text-zinc-300 hover:border-zinc-500 transition-all">
+            <span x-text="currentUser ? currentUser.full_name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() : 'U'"></span>
+          </button>
+          <button x-show="token" @click="logout()" class="text-[10px] text-zinc-500 hover:text-zinc-200">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full">
+      
+      <!-- EXPLORE TAB -->
+      <div x-show="activeTab === 'explore'" class="space-y-8">
+        
+        <!-- Hero Section & Search Controls -->
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-zinc-800/60">
+          <div class="space-y-2 max-w-xl">
+            <h1 class="text-3xl font-bold tracking-tight text-zinc-100">Campus Skill Directory</h1>
+            <p class="text-sm text-zinc-400 leading-relaxed">Discover, request, and exchange peer skills through interactive campus collaboration.</p>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+            <!-- Search Bar -->
+            <input type="text" 
+                   x-model="searchQuery" 
+                   placeholder="Search skills, topics, or peers..." 
+                   class="w-full sm:w-64 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:border-zinc-400 transition-all">
+          </div>
+        </div>
+
+        <!-- Category Pills -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <template x-for="cat in categories" :key="cat">
+            <button @click="selectedCategory = cat"
+                    :class="selectedCategory === cat ? 'bg-zinc-100 text-zinc-950 font-semibold' : 'bg-zinc-900/80 text-zinc-400 border border-zinc-800 hover:text-zinc-200'"
+                    class="px-3 py-1.5 rounded-lg text-xs transition-all whitespace-nowrap">
+              <span x-text="cat"></span>
+            </button>
+          </template>
+        </div>
+
+        <!-- Skill Cards Grid -->
+        <div x-show="loadingSkills" class="text-xs text-zinc-500">Loading skills from PostgreSQL...</div>
+        <div x-show="!loadingSkills && filteredSkills.length === 0" class="text-xs text-zinc-500">No skills found yet. Post the first skill.</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <template x-for="skill in filteredSkills" :key="skill.id">
+            <div class="bg-zinc-900/60 backdrop-blur-md border border-zinc-800/80 rounded-xl p-5 hover:border-zinc-700 transition-all flex flex-col justify-between group">
+              <div class="space-y-4">
+                
+                <!-- Category & Level -->
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium px-2.5 py-0.5 bg-zinc-800/80 text-zinc-300 border border-zinc-700/50 rounded-md" x-text="skill.category"></span>
+                  <span class="text-[11px] text-zinc-500 font-mono" x-text="skill.level"></span>
+                </div>
+
+                <!-- Title & Peer Info -->
+                <div>
+                  <h3 class="font-semibold text-zinc-100 text-base group-hover:text-white transition-colors" x-text="skill.name"></h3>
+                  <div class="flex items-center gap-2 mt-1">
+                    <p class="text-xs text-zinc-400" x-text="skill.user"></p>
+                    <span class="text-zinc-600">•</span>
+                    <span class="text-xs text-amber-400 font-medium" x-text="'⭐ ' + skill.rating + ' (' + skill.reviews + ')'"></span>
+                  </div>
+                </div>
+
+                <p class="text-xs text-zinc-400 leading-relaxed" x-text="skill.bio"></p>
+
+                <!-- Skill Exchange Comparison Box -->
+                <div class="bg-zinc-950/60 border border-zinc-800/50 rounded-lg p-3 space-y-2 text-xs">
+                  <div class="flex items-start gap-2">
+                    <span class="font-medium text-zinc-400 w-14 shrink-0">Teaches:</span>
+                    <span class="text-zinc-200 font-medium" x-text="skill.teaching"></span>
+                  </div>
+                  <div class="flex items-start gap-2">
+                    <span class="font-medium text-zinc-400 w-14 shrink-0">Wants:</span>
+                    <span class="text-zinc-200 font-medium" x-text="skill.wanting"></span>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- CTA Action -->
+              <div class="pt-5 mt-4 border-t border-zinc-800/60 flex items-center gap-2">
+                <button @click="openRequestModal(skill)" 
+                        class="w-full bg-zinc-100 hover:bg-white text-zinc-950 py-2 rounded-lg text-xs font-semibold transition-all shadow-sm">
+                  Request Skill Exchange
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- REQUESTS TAB -->
+      <div x-show="activeTab === 'requests'" class="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 class="text-2xl font-bold text-zinc-100">Exchange Requests</h1>
+          <p class="text-xs text-zinc-400 mt-1">Manage incoming requests from peers and track sent invitations.</p>
+        </div>
+
+        <div class="bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-xl overflow-hidden">
+          <ul class="divide-y divide-zinc-800/80">
+            <template x-for="req in requests" :key="req.id">
+              <li class="p-4 sm:p-5 space-y-3">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-sm text-zinc-100" x-text="req.peer"></span>
+                      <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded"
+                            :class="req.type === 'incoming' ? 'bg-amber-950/60 text-amber-300 border border-amber-800/50' : 'bg-blue-950/60 text-blue-300 border border-blue-800/50'"
+                            x-text="req.type"></span>
+                    </div>
+                    <p class="text-xs text-zinc-400" x-text="'Target Skill: ' + req.skill + ' • ' + req.timestamp"></p>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <template x-if="req.type === 'incoming' && req.status === 'Pending'">
+                      <div class="flex gap-2">
+                        <button @click="acceptRequest(req.id)" class="bg-zinc-100 text-zinc-950 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white transition-all">Accept</button>
+                        <button @click="rejectRequest(req.id)" class="bg-zinc-800 text-zinc-300 border border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-zinc-700 transition-all">Decline</button>
+                      </div>
+                    </template>
+                    <template x-if="req.type === 'outgoing' || req.status !== 'Pending'">
+                      <div class="flex items-center gap-2 flex-wrap justify-end">
+                        <span class="text-xs font-mono text-zinc-300 bg-zinc-800/80 border border-zinc-700/60 px-2.5 py-1 rounded-md" 
+                              :class="{ 'text-emerald-400 border-emerald-800/50 bg-emerald-950/40': req.status === 'Accepted' || req.status === 'Completed', 'text-rose-400 border-rose-800/50 bg-rose-950/40': req.status === 'Declined' }"
+                              x-text="req.status"></span>
+                        <button x-show="req.status === 'Accepted'" @click="openConversation(req)"
+                                class="text-[10px] px-2.5 py-1 rounded-md bg-zinc-100 text-zinc-950 font-semibold">Chat</button>
+                        <button x-show="req.status === 'Accepted'" @click="completeExchange(req.id)"
+                                class="text-[10px] px-2.5 py-1 rounded-md border border-zinc-700 text-zinc-300">Complete</button>
+                        <button x-show="req.status === 'Completed'" @click="openReview(req)"
+                                class="text-[10px] px-2.5 py-1 rounded-md bg-amber-400 text-zinc-950 font-semibold">Review</button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Request Note -->
+                <p class="text-xs text-zinc-400 bg-zinc-950/40 border border-zinc-800/50 p-2.5 rounded-lg italic" x-text="'&ldquo;' + req.note + '&rdquo;'"></p>
+              </li>
+            </template>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SMART MATCHES TAB -->
+      <div x-show="activeTab === 'matches'" class="space-y-6" x-cloak>
+        <div>
+          <h1 class="text-2xl font-bold text-zinc-100">Smart Skill Matches</h1>
+          <p class="text-xs text-zinc-400 mt-1">Backend-generated recommendations based on what you teach, what you want, and peer ratings.</p>
+        </div>
+        <div x-show="matchesLoading" class="text-xs text-zinc-500">Generating matches...</div>
+        <div x-show="!matchesLoading && matches.length === 0" class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-6 text-sm text-zinc-400">
+          No matches yet. Post a skill with both <b class="text-zinc-200">teaching</b> and <b class="text-zinc-200">wanting</b> details first.
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <template x-for="match in matches" :key="match.skill_id">
+            <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 space-y-4 hover:border-zinc-600 transition-all">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] px-2 py-1 rounded bg-emerald-950/50 border border-emerald-800/50 text-emerald-300" x-text="match.reason"></span>
+                <span class="text-lg font-bold text-zinc-100" x-text="match.match_score + '%'"></span>
+              </div>
+              <div>
+                <h3 class="text-sm font-semibold text-zinc-100" x-text="match.skill"></h3>
+                <p class="text-xs text-zinc-400 mt-1" x-text="match.user"></p>
+              </div>
+              <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 space-y-2 text-xs">
+                <div><span class="text-zinc-500">Teaches:</span> <span class="text-zinc-200" x-text="match.teaching"></span></div>
+                <div><span class="text-zinc-500">Wants:</span> <span class="text-zinc-200" x-text="match.wanting"></span></div>
+                <div><span class="text-zinc-500">Rating:</span> <span class="text-amber-400" x-text="'⭐ ' + (match.rating || 0) + ' (' + (match.reviews || 0) + ')'"></span></div>
+              </div>
+              <button @click="openRequestModal({id: match.skill_id, name: match.skill, user: match.user})"
+                      class="w-full bg-zinc-100 text-zinc-950 py-2 rounded-lg text-xs font-semibold">Request This Match</button>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- MESSAGES TAB -->
+      <div x-show="activeTab === 'messages'" class="space-y-6" x-cloak>
+        <div>
+          <h1 class="text-2xl font-bold text-zinc-100">Messages</h1>
+          <p class="text-xs text-zinc-400 mt-1">Chat is available for accepted or completed exchanges.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-[280px_1fr] min-h-[520px] bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden">
+          <aside class="border-r border-zinc-800 p-3">
+            <template x-if="conversations.length === 0">
+              <p class="text-xs text-zinc-500 p-3">No accepted conversations yet.</p>
+            </template>
+            <template x-for="conv in conversations" :key="conv.id">
+              <button @click="openConversation(conv)"
+                      class="w-full text-left p-3 rounded-lg mb-1 hover:bg-zinc-800/70 transition-all"
+                      :class="selectedConversation && selectedConversation.id === conv.id ? 'bg-zinc-800 border border-zinc-700' : ''">
+                <div class="text-xs font-semibold text-zinc-100" x-text="conv.peer"></div>
+                <div class="text-[11px] text-zinc-500 mt-1" x-text="conv.skill + ' • ' + conv.status"></div>
+              </button>
+            </template>
+          </aside>
+
+          <section class="flex flex-col min-w-0">
+            <template x-if="!selectedConversation">
+              <div class="flex-1 flex items-center justify-center text-xs text-zinc-500">Choose a conversation.</div>
+            </template>
+
+            <template x-if="selectedConversation">
+              <div class="flex flex-col flex-1">
+                <div class="p-4 border-b border-zinc-800">
+                  <div class="text-sm font-semibold text-zinc-100" x-text="selectedConversation.peer"></div>
+                  <div class="text-[11px] text-zinc-500" x-text="selectedConversation.skill"></div>
+                </div>
+
+                <div class="flex-1 p-4 space-y-2 overflow-y-auto max-h-[390px]">
+                  <template x-if="messages.length === 0">
+                    <p class="text-xs text-zinc-500">No messages yet. Start the conversation.</p>
+                  </template>
+                  <template x-for="m in messages" :key="m.id">
+                    <div class="flex" :class="m.sender_id === currentUser?.id ? 'justify-end' : 'justify-start'">
+                      <div class="max-w-[75%] rounded-xl px-3 py-2 text-xs"
+                           :class="m.sender_id === currentUser?.id ? 'bg-zinc-100 text-zinc-950' : 'bg-zinc-800 text-zinc-200'">
+                        <div x-text="m.message"></div>
+                        <div class="text-[9px] mt-1 opacity-60" x-text="new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})"></div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+
+                <form @submit.prevent="sendMessage()" class="p-3 border-t border-zinc-800 flex gap-2">
+                  <input x-model="newMessage" required placeholder="Type a message..."
+                         class="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-500">
+                  <button class="bg-zinc-100 text-zinc-950 rounded-lg px-4 text-xs font-semibold">Send</button>
+                </form>
+              </div>
+            </template>
+          </section>
+        </div>
+      </div>
+
+      <!-- DASHBOARD TAB -->
+      <div x-show="activeTab === 'dashboard'" class="space-y-6" x-cloak>
+        <div>
+          <h1 class="text-2xl font-bold text-zinc-100">SkillSwap Dashboard</h1>
+          <p class="text-xs text-zinc-400 mt-1">Live user stats and platform analytics from PostgreSQL.</p>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+            <div class="text-[10px] uppercase text-zinc-500">My Skills</div>
+            <div class="text-2xl font-bold mt-2" x-text="dashboard.skills || 0"></div>
+          </div>
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+            <div class="text-[10px] uppercase text-zinc-500">Pending Requests</div>
+            <div class="text-2xl font-bold mt-2" x-text="dashboard.pending_requests || 0"></div>
+          </div>
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+            <div class="text-[10px] uppercase text-zinc-500">Completed</div>
+            <div class="text-2xl font-bold mt-2" x-text="dashboard.completed_exchanges || 0"></div>
+          </div>
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+            <div class="text-[10px] uppercase text-zinc-500">Peer Rating</div>
+            <div class="text-2xl font-bold mt-2 text-amber-400" x-text="'⭐ ' + (dashboard.rating || 0)"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-zinc-100">Platform Overview</h3>
+            <div class="grid grid-cols-2 gap-3 mt-4 text-xs">
+              <div class="bg-zinc-950/60 rounded-lg p-3"><span class="text-zinc-500">Students</span><div class="text-xl font-bold mt-1" x-text="analytics.total_users || 0"></div></div>
+              <div class="bg-zinc-950/60 rounded-lg p-3"><span class="text-zinc-500">Skills</span><div class="text-xl font-bold mt-1" x-text="analytics.total_skills || 0"></div></div>
+              <div class="bg-zinc-950/60 rounded-lg p-3"><span class="text-zinc-500">Requests</span><div class="text-xl font-bold mt-1" x-text="analytics.total_requests || 0"></div></div>
+              <div class="bg-zinc-950/60 rounded-lg p-3"><span class="text-zinc-500">Completed</span><div class="text-xl font-bold mt-1" x-text="analytics.completed_exchanges || 0"></div></div>
+            </div>
+          </div>
+
+          <div class="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5">
+            <h3 class="text-sm font-semibold text-zinc-100">Skill Categories</h3>
+            <div class="space-y-3 mt-4">
+              <template x-for="cat in (analytics.categories || [])" :key="cat.category">
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <span class="text-zinc-300" x-text="cat.category"></span>
+                    <span class="text-zinc-500" x-text="cat.total"></span>
+                  </div>
+                  <div class="h-1.5 rounded bg-zinc-800 overflow-hidden">
+                    <div class="h-full bg-zinc-300 rounded"
+                         :style="`width:${Math.min(100, Number(cat.total) * 10)}%`"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- MODAL 1: Request Skill Exchange -->
+  <div x-show="requestModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" x-cloak>
+    <div class="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-xl p-6 space-y-5 shadow-2xl" @click.away="requestModal = false">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <div>
+          <h2 class="text-base font-semibold text-zinc-100">Send Skill Exchange Request</h2>
+          <p class="text-xs text-zinc-400" x-text="'Target Peer: ' + (selectedSkill ? selectedSkill.user : '')"></p>
+        </div>
+        <button @click="requestModal = false" class="text-zinc-500 hover:text-zinc-300">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-zinc-300 mb-1">Skill You Want to Learn</label>
+          <input type="text" :value="selectedSkill ? selectedSkill.name : ''" readonly class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-400 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-zinc-300 mb-1">Personal Note / Proposed Skill Trade</label>
+          <textarea x-model="requestMessage" rows="3" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end gap-2 border-t border-zinc-800">
+        <button @click="requestModal = false" class="px-4 py-2 border border-zinc-800 rounded-lg text-xs font-medium text-zinc-400 hover:bg-zinc-800">Cancel</button>
+        <button @click="submitRequest()" class="px-4 py-2 bg-zinc-100 text-zinc-950 rounded-lg text-xs font-semibold hover:bg-white">Send Request</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Post Skill Listing -->
+  <div x-show="newSkillModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" x-cloak>
+    <div class="bg-zinc-900 border border-zinc-800 w-full max-w-lg rounded-xl p-6 space-y-5 shadow-2xl" @click.away="newSkillModal = false">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <h2 class="text-base font-semibold text-zinc-100">Post a New Skill Listing</h2>
+        <button @click="newSkillModal = false" class="text-zinc-500 hover:text-zinc-300">✕</button>
+      </div>
+
+      <form class="space-y-4" @submit.prevent="postSkill($event)">
+        <div>
+          <label class="block text-xs font-medium text-zinc-300 mb-1">Skill Title</label>
+          <input name="title" required type="text" placeholder="e.g. Advanced Java Algorithms" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-zinc-300 mb-1">Category</label>
+            <select name="category" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none">
+              <option>Engineering</option>
+              <option>Design</option>
+              <option>Data Science</option>
+              <option>Product</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-zinc-300 mb-1">Proficiency Level</label>
+            <select name="level" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none">
+              <option>Intermediate</option>
+              <option>Advanced</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-zinc-300 mb-1">Short Description / Bio</label>
+          <input name="bio" required type="text" placeholder="e.g. 1st year CSE student. Built several Java projects." class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-zinc-300 mb-1">Skills Wanted in Return</label>
+          <input name="wanting" required type="text" placeholder="e.g. React, Tailwind CSS, UI Design" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-zinc-400 focus:outline-none">
+        </div>
+
+        <div class="pt-2 flex justify-end gap-2 border-t border-zinc-800">
+          <button type="button" @click="newSkillModal = false" class="px-4 py-2 border border-zinc-800 rounded-lg text-xs font-medium text-zinc-400 hover:bg-zinc-800">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-zinc-100 text-zinc-950 rounded-lg text-xs font-semibold hover:bg-white">Publish Listing</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: User Profile -->
+  <div x-show="profileModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" x-cloak>
+    <div class="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-xl p-6 space-y-5 shadow-2xl" @click.away="profileModal = false">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <h2 class="text-base font-semibold text-zinc-100">Student Profile</h2>
+        <button @click="profileModal = false" class="text-zinc-500 hover:text-zinc-300">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div class="flex items-center gap-3">
+          <div class="h-12 w-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-sm font-bold text-zinc-200">
+            DS
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-100" x-text="currentUser ? currentUser.full_name : 'Student'"></h3>
+            <p class="text-xs text-zinc-400" x-text="currentUser ? `${currentUser.course || 'Course not set'} • Year ${currentUser.year_of_study || '-'}` : 'Not signed in'"></p>
+          </div>
+        </div>
+
+        <div class="bg-zinc-950/60 border border-zinc-800 rounded-lg p-3 space-y-2 text-xs">
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Listed Skills:</span>
+            <span class="text-zinc-200 font-semibold">1 Active</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Exchanges Completed:</span>
+            <span class="text-zinc-200 font-semibold" x-text="currentUser ? `${currentUser.completed_exchanges || 0} Matches` : '0 Matches'"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Peer Rating:</span>
+            <span class="text-amber-400 font-semibold" x-text="currentUser ? `⭐ ${currentUser.average_rating || 0}` : '⭐ 0'"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 flex justify-end">
+        <button @click="profileModal = false" class="px-4 py-2 bg-zinc-100 text-zinc-950 rounded-lg text-xs font-semibold hover:bg-white">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REVIEW MODAL -->
+  <div x-show="reviewModal" x-cloak class="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-xl p-6 space-y-4" @click.away="reviewModal=false">
+      <div class="flex justify-between items-center">
+        <div>
+          <h2 class="text-base font-semibold">Review Skill Exchange</h2>
+          <p class="text-xs text-zinc-500 mt-1" x-text="reviewRequest ? reviewRequest.peer + ' • ' + reviewRequest.skill : ''"></p>
+        </div>
+        <button @click="reviewModal=false" class="text-zinc-500">✕</button>
+      </div>
+      <div>
+        <label class="text-xs text-zinc-400">Rating</label>
+        <select x-model.number="reviewRating" class="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs">
+          <option :value="5">5 - Excellent</option>
+          <option :value="4">4 - Very Good</option>
+          <option :value="3">3 - Good</option>
+          <option :value="2">2 - Fair</option>
+          <option :value="1">1 - Poor</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-zinc-400">Comment</label>
+        <textarea x-model="reviewComment" rows="4" class="mt-1 w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs" placeholder="Share your experience..."></textarea>
+      </div>
+      <button @click="submitReview()" class="w-full bg-zinc-100 text-zinc-950 rounded-lg py-2.5 text-xs font-semibold">Submit Review</button>
+    </div>
+  </div>
+
+
+  <script>
+    const API_URL = 'http://localhost:5000';
+
+    function skillSwapApp() {
+      return {
+        activeTab: 'explore',
+        searchQuery: '',
+        selectedCategory: 'All',
+        categories: ['All', 'Engineering', 'Design', 'Data Science', 'Product'],
+
+        skills: [],
+        requests: [],
+        matches: [],
+        conversations: [],
+        messages: [],
+        notifications: [],
+        dashboard: {},
+        analytics: {},
+        currentUser: null,
+        token: localStorage.getItem('skillswap_token') || '',
+
+        authMode: 'login',
+        authModal: false,
+        authError: '',
+        authLoading: false,
+        loginEmail: '',
+        loginPassword: '',
+        registerName: '',
+        registerEmail: '',
+        registerPassword: '',
+        registerCourse: 'Computer Science Engineering',
+        registerYear: 1,
+
+        newSkillModal: false,
+        requestModal: false,
+        profileModal: false,
+        notificationOpen: false,
+        reviewModal: false,
+
+        selectedSkill: null,
+        selectedConversation: null,
+        reviewRequest: null,
+        requestMessage: '',
+        newMessage: '',
+        reviewComment: '',
+        reviewRating: 5,
+
+        loadingSkills: false,
+        matchesLoading: false,
+        unreadNotifications: 0,
+
+        get filteredSkills() {
+          return this.skills.filter(skill => {
+            const matchesCat = this.selectedCategory === 'All' || skill.category === this.selectedCategory;
+            const q = this.searchQuery.toLowerCase();
+            const matchesQuery =
+              (skill.name || '').toLowerCase().includes(q) ||
+              (skill.user || '').toLowerCase().includes(q) ||
+              (skill.teaching || '').toLowerCase().includes(q);
+            return matchesCat && matchesQuery;
+          });
+        },
+
+        async api(path, options = {}) {
+          const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+          if (this.token) headers.Authorization = `Bearer ${this.token}`;
+
+          const response = await fetch(API_URL + path, { ...options, headers });
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) throw new Error(data.message || 'Request failed');
+          return data;
+        },
+
+        async init() {
+          await this.loadSkills();
+
+          if (this.token) {
+            try {
+              await Promise.all([
+                this.loadProfile(),
+                this.loadRequests(),
+                this.loadNotifications(),
+                this.loadDashboard()
+              ]);
+            } catch (err) {
+              console.error(err);
+              this.logout(false);
+              this.authModal = true;
+            }
+          } else {
+            this.authModal = true;
+          }
+        },
+
+        async loadSkills() {
+          this.loadingSkills = true;
+          try {
+            const data = await this.api('/skills');
+            this.skills = data.skills || [];
+          } finally {
+            this.loadingSkills = false;
+          }
+        },
+
+        async loadProfile() {
+          if (!this.token) return;
+          const data = await this.api('/profile');
+          this.currentUser = data.user;
+        },
+
+        async loadRequests() {
+          if (!this.token) return;
+          const data = await this.api('/requests');
+          this.requests = (data.requests || []).map(req => ({
+            ...req,
+            timestamp: new Date(req.created_at).toLocaleString(),
+            note: req.note || ''
+          }));
+          this.conversations = this.requests.filter(r => ['Accepted', 'Completed'].includes(r.status));
+        },
+
+        async loadConversations() {
+          if (!this.requireLogin()) return;
+          await this.loadRequests();
+          if (!this.selectedConversation && this.conversations.length) {
+            await this.openConversation(this.conversations[0]);
+          }
+        },
+
+        async loadMatches() {
+          if (!this.requireLogin()) return;
+          this.matchesLoading = true;
+          try {
+            const data = await this.api('/matches');
+            this.matches = data.matches || [];
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            this.matchesLoading = false;
+          }
+        },
+
+        async loadNotifications() {
+          if (!this.token) return;
+          try {
+            const data = await this.api('/notifications');
+            this.notifications = data.notifications || [];
+            this.unreadNotifications = this.notifications.filter(n => !n.is_read).length;
+          } catch (err) {
+            console.error(err);
+          }
+        },
+
+        async markNotificationRead(n) {
+          if (!n.is_read) {
+            try {
+              await this.api(`/notifications/${n.id}/read`, { method: 'PUT' });
+              n.is_read = true;
+              this.unreadNotifications = Math.max(0, this.unreadNotifications - 1);
+            } catch (err) {
+              console.error(err);
+            }
+          }
+        },
+
+        async markAllNotificationsRead() {
+          try {
+            await this.api('/notifications/read-all', { method: 'PUT' });
+            this.notifications.forEach(n => n.is_read = true);
+            this.unreadNotifications = 0;
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async loadDashboard() {
+          if (!this.token) return;
+          try {
+            const data = await this.api('/dashboard');
+            this.dashboard = data.dashboard || {};
+          } catch (err) {
+            console.error(err);
+          }
+        },
+
+        async loadAnalytics() {
+          if (!this.requireLogin()) return;
+          try {
+            const data = await this.api('/analytics');
+            this.analytics = data.analytics || {};
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async login() {
+          this.authError = '';
+          this.authLoading = true;
+          try {
+            const data = await this.api('/login', {
+              method: 'POST',
+              body: JSON.stringify({ email: this.loginEmail, password: this.loginPassword })
+            });
+
+            this.token = data.token;
+            localStorage.setItem('skillswap_token', data.token);
+            this.currentUser = data.user;
+            this.authModal = false;
+
+            await Promise.all([
+              this.loadSkills(),
+              this.loadRequests(),
+              this.loadNotifications(),
+              this.loadDashboard()
+            ]);
+          } catch (err) {
+            this.authError = err.message;
+          } finally {
+            this.authLoading = false;
+          }
+        },
+
+        async register() {
+          this.authError = '';
+          this.authLoading = true;
+
+          try {
+            const data = await this.api('/register', {
+              method: 'POST',
+              body: JSON.stringify({
+                full_name: this.registerName,
+                email: this.registerEmail,
+                password: this.registerPassword,
+                course: this.registerCourse,
+                year_of_study: Number(this.registerYear)
+              })
+            });
+
+            this.token = data.token;
+            localStorage.setItem('skillswap_token', data.token);
+            this.currentUser = data.user;
+            this.authModal = false;
+
+            await Promise.all([
+              this.loadSkills(),
+              this.loadRequests(),
+              this.loadNotifications(),
+              this.loadDashboard()
+            ]);
+          } catch (err) {
+            this.authError = err.message;
+          } finally {
+            this.authLoading = false;
+          }
+        },
+
+        logout(showModal = true) {
+          this.token = '';
+          this.currentUser = null;
+          this.requests = [];
+          this.matches = [];
+          this.messages = [];
+          this.notifications = [];
+          this.dashboard = {};
+          this.analytics = {};
+          this.selectedConversation = null;
+          localStorage.removeItem('skillswap_token');
+          if (showModal) this.authModal = true;
+        },
+
+        requireLogin() {
+          if (!this.token) {
+            this.authModal = true;
+            return false;
+          }
+          return true;
+        },
+
+        openRequestModal(skill) {
+          if (!this.requireLogin()) return;
+
+          if (skill.user_id && this.currentUser && skill.user_id === this.currentUser.id) {
+            alert("You cannot request your own skill.");
+            return;
+          }
+
+          this.selectedSkill = skill;
+          this.requestMessage =
+            `Hi ${(skill.user || 'there').split(' ')[0]}, I would like to learn ${skill.name}. In exchange, I can share my skills!`;
+          this.requestModal = true;
+        },
+
+        async submitRequest() {
+          if (!this.selectedSkill) return;
+
+          try {
+            await this.api('/requests', {
+              method: 'POST',
+              body: JSON.stringify({
+                skill_id: this.selectedSkill.id,
+                note: this.requestMessage
+              })
+            });
+
+            this.requestModal = false;
+            await Promise.all([this.loadRequests(), this.loadNotifications(), this.loadDashboard()]);
+            alert('Skill exchange request sent successfully.');
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async acceptRequest(id) {
+          try {
+            await this.api(`/requests/${id}/accept`, { method: 'PUT' });
+            await Promise.all([this.loadRequests(), this.loadNotifications(), this.loadDashboard()]);
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async rejectRequest(id) {
+          try {
+            await this.api(`/requests/${id}/reject`, { method: 'PUT' });
+            await Promise.all([this.loadRequests(), this.loadNotifications()]);
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async completeExchange(id) {
+          if (!confirm('Mark this skill exchange as completed?')) return;
+
+          try {
+            await this.api(`/requests/${id}/complete`, { method: 'PUT' });
+            await Promise.all([this.loadRequests(), this.loadProfile(), this.loadDashboard(), this.loadNotifications()]);
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async openConversation(req) {
+          if (!this.requireLogin()) return;
+
+          this.selectedConversation = req;
+          this.activeTab = 'messages';
+
+          try {
+            const data = await this.api(`/requests/${req.id}/messages`);
+            this.messages = data.messages || [];
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async sendMessage() {
+          const message = this.newMessage.trim();
+          if (!message || !this.selectedConversation) return;
+
+          try {
+            await this.api(`/requests/${this.selectedConversation.id}/messages`, {
+              method: 'POST',
+              body: JSON.stringify({ message })
+            });
+
+            this.newMessage = '';
+            const data = await this.api(`/requests/${this.selectedConversation.id}/messages`);
+            this.messages = data.messages || [];
+            await this.loadNotifications();
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        openReview(req) {
+          this.reviewRequest = req;
+          this.reviewRating = 5;
+          this.reviewComment = '';
+          this.reviewModal = true;
+        },
+
+        async submitReview() {
+          if (!this.reviewRequest) return;
+
+          try {
+            await this.api('/reviews', {
+              method: 'POST',
+              body: JSON.stringify({
+                request_id: this.reviewRequest.id,
+                rating: Number(this.reviewRating),
+                comment: this.reviewComment
+              })
+            });
+
+            this.reviewModal = false;
+            await Promise.all([this.loadProfile(), this.loadRequests(), this.loadNotifications(), this.loadDashboard()]);
+            alert('Review submitted successfully.');
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async postSkill(event) {
+          if (!this.requireLogin()) return;
+
+          const form = event.target;
+          const title = form.title.value.trim();
+
+          try {
+            await this.api('/skills', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: title,
+                category: form.category.value,
+                level: form.level.value,
+                bio: form.bio.value,
+                teaching: title,
+                wanting: form.wanting.value,
+                status: 'Available'
+              })
+            });
+
+            form.reset();
+            this.newSkillModal = false;
+            await Promise.all([this.loadSkills(), this.loadDashboard()]);
+          } catch (err) {
+            alert(err.message);
+          }
+        }
+      };
+    }
+  </script>
+
+  <div x-show="authModal" x-cloak
+       class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl">
+      <h2 class="text-lg font-semibold text-zinc-100 mb-1"
+          x-text="authMode === 'login' ? 'Sign in to SkillSwap' : 'Create your SkillSwap account'"></h2>
+      <p class="text-xs text-zinc-400 mb-5">Connected to your PostgreSQL backend.</p>
+
+      <template x-if="authMode === 'login'">
+        <form class="space-y-4" @submit.prevent="login()">
+          <input x-model="loginEmail" type="email" required placeholder="Email"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <input x-model="loginPassword" type="password" required placeholder="Password"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <p x-show="authError" class="text-xs text-rose-400" x-text="authError"></p>
+          <button class="w-full bg-zinc-100 text-zinc-950 py-2.5 rounded-lg text-xs font-semibold"
+                  :disabled="authLoading">
+            <span x-text="authLoading ? 'Signing in...' : 'Sign in'"></span>
+          </button>
+          <button type="button" @click="authMode='register'; authError=''"
+                  class="w-full text-xs text-zinc-400 hover:text-zinc-200">Create account</button>
+        </form>
+      </template>
+
+      <template x-if="authMode === 'register'">
+        <form class="space-y-4" @submit.prevent="register()">
+          <input x-model="registerName" required placeholder="Full name"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <input x-model="registerEmail" type="email" required placeholder="Email"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <input x-model="registerPassword" type="password" minlength="6" required placeholder="Password"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <input x-model="registerCourse" placeholder="Course"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <input x-model="registerYear" type="number" min="1" max="6" placeholder="Year"
+                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100">
+          <p x-show="authError" class="text-xs text-rose-400" x-text="authError"></p>
+          <button class="w-full bg-zinc-100 text-zinc-950 py-2.5 rounded-lg text-xs font-semibold"
+                  :disabled="authLoading">
+            <span x-text="authLoading ? 'Creating...' : 'Create account'"></span>
+          </button>
+          <button type="button" @click="authMode='login'; authError=''"
+                  class="w-full text-xs text-zinc-400 hover:text-zinc-200">Back to login</button>
+        </form>
+      </template>
+    </div>
+  </div>
+
+  <!-- Multi-Layer 3D WebGL Engine (Three.js) -->
+  <script>
+    const canvas = document.getElementById('bg-canvas');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // 1. Ambient Dynamic Particle Array
+    const particleCount = 200;
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount * 3; i += 3) {
+      particlePositions[i] = (Math.random() - 0.5) * 18;
+      particlePositions[i + 1] = (Math.random() - 0.5) * 18;
+      particlePositions[i + 2] = (Math.random() - 0.5) * 18;
+    }
+
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0xa1a1aa,
+      size: 0.03,
+      transparent: true,
+      opacity: 0.5
+    });
+
+    const particles = new THREE.Points(particleGeometry, particleMaterial);
+    scene.add(particles);
+
+    // 2. Dual Nested Wireframe Meshes (3D Geometric Core)
+    const outerGeo = new THREE.IcosahedronGeometry(3.8, 1);
+    const outerMat = new THREE.MeshBasicMaterial({ color: 0x3f3f46, wireframe: true, transparent: true, opacity: 0.12 });
+    const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+    scene.add(outerMesh);
+
+    const innerGeo = new THREE.OctahedronGeometry(2.2, 0);
+    const innerMat = new THREE.MeshBasicMaterial({ color: 0x71717a, wireframe: true, transparent: true, opacity: 0.18 });
+    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+    scene.add(innerMesh);
+
+    // 3. Floating Interactive Geometric Nodes
+    const floatingNodes = [];
+    const nodeGeo = new THREE.TorusGeometry(0.3, 0.08, 8, 24);
+    const nodeMat = new THREE.MeshBasicMaterial({ color: 0xe4e4e7, wireframe: true, transparent: true, opacity: 0.25 });
+
+    for (let i = 0; i < 5; i++) {
+      const node = new THREE.Mesh(nodeGeo, nodeMat);
+      node.position.set(
+        (Math.random() - 0.5) * 10,
+        (Math.random() - 0.5) * 8,
+        (Math.random() - 0.5) * 6
+      );
+      scene.add(node);
+      floatingNodes.push(node);
+    }
+
+    camera.position.z = 6.5;
+
+    // Smooth Mouse Tracking & Parallax Interpolation
+    let mouseX = 0, mouseY = 0;
+    let targetX = 0, targetY = 0;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / window.innerWidth - 0.5) * 0.8;
+      mouseY = (e.clientY / window.innerHeight - 0.5) * 0.8;
+    });
+
+    // Main 3D Render & Motion Loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Rotations
+      outerMesh.rotation.x += 0.001;
+      outerMesh.rotation.y += 0.0015;
+
+      innerMesh.rotation.x -= 0.002;
+      innerMesh.rotation.y -= 0.001;
+
+      particles.rotation.y += 0.0005;
+
+      // Animate floating torus nodes
+      floatingNodes.forEach((node, idx) => {
+        node.rotation.x += 0.005 * (idx % 2 === 0 ? 1 : -1);
+        node.rotation.y += 0.008;
+        node.position.y += Math.sin(Date.now() * 0.001 + idx) * 0.002;
+      });
+
+      // Smooth Camera Inertia
+      targetX += (mouseX - targetX) * 0.04;
+      targetY += (-mouseY - targetY) * 0.04;
+      camera.position.x = targetX;
+      camera.position.y = targetY;
+      camera.lookAt(scene.position);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // Responsive Canvas Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
